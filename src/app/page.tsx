@@ -108,7 +108,7 @@ export default function TaskManager() {
                       value={newTask}
                       onChange={(e) => setNewTask(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && addTask()}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-gray-900 bg-white"
                       placeholder="タスクを入力してください..."
                     />
                   </div>
@@ -120,7 +120,7 @@ export default function TaskManager() {
                     <select
                       value={priority}
                       onChange={(e) => setPriority(e.target.value as 'low' | 'medium' | 'high')}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-gray-900 bg-white"
                     >
                       <option value="low">低</option>
                       <option value="medium">中</option>
