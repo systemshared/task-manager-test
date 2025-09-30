@@ -8,6 +8,7 @@ interface Task {
   completed: boolean;
   priority: 'low' | 'medium' | 'high';
   createdAt: Date;
+  dueDate?: Date;
 }
 
 type FilterType = 'all' | 'completed' | 'pending';
@@ -17,21 +18,33 @@ export default function TaskManager() {
   const [newTask, setNewTask] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
 
   useEffect(() => {
     const savedTasks = localStorage.getItem('tasks');
     if (savedTasks) {
       const parsedTasks = JSON.parse(savedTasks).map((task: any) => ({
         ...task,
-        createdAt: new Date(task.createdAt)
+        createdAt: new Date(task.createdAt),
+        dueDate: task.dueDate ? new Date(task.dueDate) : undefined
       }));
       setTasks(parsedTasks);
+    }
+    const savedViewMode = localStorage.getItem('viewMode');
+    if (savedViewMode === 'list' || savedViewMode === 'calendar') {
+      setViewMode(savedViewMode);
     }
   }, []);
 
   useEffect(() => {
     localStorage.setItem('tasks', JSON.stringify(tasks));
   }, [tasks]);
+
+  useEffect(() => {
+    localStorage.setItem('viewMode', viewMode);
+  }, [viewMode]);
 
   const addTask = () => {
     if (newTask.trim() !== '') {
@@ -41,9 +54,11 @@ export default function TaskManager() {
         completed: false,
         priority,
         createdAt: new Date(),
+        dueDate: dueDate ? new Date(dueDate) : undefined,
       };
       setTasks([task, ...tasks]);
       setNewTask('');
+      setDueDate('');
     }
   };
 
@@ -58,14 +73,21 @@ export default function TaskManager() {
   };
 
   const filteredTasks = tasks.filter(task => {
-    switch (filter) {
-      case 'completed':
-        return task.completed;
-      case 'pending':
-        return !task.completed;
-      default:
-        return true;
-    }
+    const matchesFilter = (() => {
+      switch (filter) {
+        case 'completed':
+          return task.completed;
+        case 'pending':
+          return !task.completed;
+        default:
+          return true;
+      }
+    })();
+
+    const matchesSearch = searchQuery.trim() === '' ||
+      task.text.toLowerCase().includes(searchQuery.toLowerCase());
+
+    return matchesFilter && matchesSearch;
   });
 
   const getPriorityColor = (priority: string) => {
@@ -84,13 +106,163 @@ export default function TaskManager() {
   const completedCount = tasks.filter(task => task.completed).length;
   const totalCount = tasks.length;
 
+  const getCalendarDays = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startDayOfWeek = firstDay.getDay();
+
+    const days = [];
+    for (let i = 0; i < startDayOfWeek; i++) {
+      days.push(null);
+    }
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(new Date(year, month, i));
+    }
+    return days;
+  };
+
+  const getTasksForDate = (date: Date) => {
+    return filteredTasks.filter(task => {
+      if (!task.dueDate) return false;
+      const taskDate = new Date(task.dueDate);
+      return taskDate.getFullYear() === date.getFullYear() &&
+             taskDate.getMonth() === date.getMonth() &&
+             taskDate.getDate() === date.getDate();
+    });
+  };
+
+  const renderCalendarView = () => {
+    const days = getCalendarDays();
+    const now = new Date();
+    const weekDays = ['日', '月', '火', '水', '木', '金', '土'];
+
+    return (
+      <div className="bg-white rounded-xl p-6">
+        <div className="text-center mb-4">
+          <h2 className="text-2xl font-bold text-gray-800">
+            {now.getFullYear()}年 {now.getMonth() + 1}月
+          </h2>
+        </div>
+        <div className="grid grid-cols-7 gap-2 mb-2">
+          {weekDays.map(day => (
+            <div key={day} className="text-center font-semibold text-gray-600 py-2">
+              {day}
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-2">
+          {days.map((day, index) => {
+            if (!day) {
+              return <div key={`empty-${index}`} className="aspect-square" />;
+            }
+            const tasksForDay = getTasksForDate(day);
+            const isToday = day.getDate() === now.getDate() &&
+                           day.getMonth() === now.getMonth() &&
+                           day.getFullYear() === now.getFullYear();
+
+            return (
+              <div
+                key={index}
+                className={`aspect-square border-2 rounded-lg p-2 ${
+                  isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                }`}
+              >
+                <div className={`text-sm font-medium mb-1 ${
+                  isToday ? 'text-blue-600' : 'text-gray-700'
+                }`}>
+                  {day.getDate()}
+                </div>
+                <div className="space-y-1">
+                  {tasksForDay.slice(0, 3).map(task => (
+                    <div
+                      key={task.id}
+                      className={`text-xs px-1 py-0.5 rounded truncate ${
+                        task.completed ? 'bg-green-100 text-green-800 line-through' :
+                        task.priority === 'high' ? 'bg-red-100 text-red-800' :
+                        task.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}
+                      title={task.text}
+                    >
+                      {task.text}
+                    </div>
+                  ))}
+                  {tasksForDay.length > 3 && (
+                    <div className="text-xs text-gray-500">
+                      +{tasksForDay.length - 3}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {filteredTasks.filter(t => !t.dueDate).length > 0 && (
+          <div className="mt-6 border-t-2 pt-4">
+            <h3 className="text-lg font-semibold text-gray-800 mb-3">期限なしのタスク</h3>
+            <div className="space-y-2">
+              {filteredTasks.filter(t => !t.dueDate).map(task => (
+                <div
+                  key={task.id}
+                  className={`bg-white border-2 rounded-lg p-3 ${
+                    task.completed ? 'opacity-75' : ''
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2 flex-1">
+                      <button
+                        onClick={() => toggleTask(task.id)}
+                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                          task.completed
+                            ? 'bg-green-500 border-green-500 text-white'
+                            : 'border-gray-300'
+                        }`}
+                      >
+                        {task.completed && <span className="text-xs">✓</span>}
+                      </button>
+                      <p className={`text-sm ${task.completed ? 'line-through text-gray-500' : 'text-gray-800'}`}>
+                        {task.text}
+                      </p>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs ${getPriorityColor(task.priority)}`}
+                      >
+                        {task.priority === 'high' ? '高' :
+                         task.priority === 'medium' ? '中' : '低'}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => deleteTask(task.id)}
+                      className="text-red-500 hover:text-red-700 p-1"
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path
+                          fillRule="evenodd"
+                          d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
       <div className="max-w-4xl mx-auto">
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold text-gray-800 mb-2">タスク管理アプリ</h1>
-            <p className="text-gray-600">効率的にタスクを管理しましょう</p>
+            <h1 className="text-4xl font-bold text-gray-800 mb-2">タコスケ</h1>
+            <p className="text-gray-600">タスク管理アプリ</p>
           </div>
 
           <div className="flex flex-col lg:flex-row gap-8">
@@ -126,6 +298,18 @@ export default function TaskManager() {
                       <option value="medium">中</option>
                       <option value="high">高</option>
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      期限日（オプション）
+                    </label>
+                    <input
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-gray-900 bg-white"
+                    />
                   </div>
 
                   <button
@@ -174,6 +358,37 @@ export default function TaskManager() {
 
             <div className="lg:w-2/3">
               <div className="mb-6">
+                <div className="mb-4 flex gap-2">
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                      viewMode === 'list'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    リスト表示
+                  </button>
+                  <button
+                    onClick={() => setViewMode('calendar')}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                      viewMode === 'calendar'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    カレンダー表示
+                  </button>
+                </div>
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-gray-900 bg-white"
+                    placeholder="タスクを検索..."
+                  />
+                </div>
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={() => setFilter('all')}
@@ -208,18 +423,22 @@ export default function TaskManager() {
                 </div>
               </div>
 
-              <div className="space-y-3">
-                {filteredTasks.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500">
-                    <div className="text-6xl mb-4">📝</div>
-                    <p className="text-lg">
-                      {filter === 'all' ? 'まだタスクがありません' :
-                       filter === 'completed' ? '完了したタスクがありません' :
-                       '未完了のタスクがありません'}
-                    </p>
-                  </div>
-                ) : (
-                  filteredTasks.map((task) => (
+              {viewMode === 'calendar' ? (
+                renderCalendarView()
+              ) : (
+                <div className="space-y-3">
+                  {filteredTasks.length === 0 ? (
+                    <div className="text-center py-12 text-gray-500">
+                      <div className="text-6xl mb-4">📝</div>
+                      <p className="text-lg">
+                        {searchQuery.trim() !== '' ? '検索結果が見つかりません' :
+                         filter === 'all' ? 'まだタスクがありません' :
+                         filter === 'completed' ? '完了したタスクがありません' :
+                         '未完了のタスクがありません'}
+                      </p>
+                    </div>
+                  ) : (
+                    filteredTasks.map((task) => (
                     <div
                       key={task.id}
                       className={`bg-white border-2 rounded-xl p-4 transition-all duration-200 hover:shadow-md ${
@@ -255,8 +474,17 @@ export default function TaskManager() {
                                 {task.priority === 'high' ? '高' :
                                  task.priority === 'medium' ? '中' : '低'}
                               </span>
+                              {task.dueDate && (
+                                <span className={`text-xs font-medium ${
+                                  new Date(task.dueDate) < new Date() && !task.completed
+                                    ? 'text-red-600'
+                                    : 'text-blue-600'
+                                }`}>
+                                  期限: {task.dueDate.toLocaleDateString('ja-JP')}
+                                </span>
+                              )}
                               <span className="text-xs text-gray-400">
-                                {task.createdAt.toLocaleDateString('ja-JP')}
+                                作成: {task.createdAt.toLocaleDateString('ja-JP')}
                               </span>
                             </div>
                           </div>
@@ -275,9 +503,10 @@ export default function TaskManager() {
                         </button>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
